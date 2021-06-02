@@ -1,0 +1,85 @@
+Parameters:
+    mySecurityGroup:
+        Description: Security Group
+        Type: String
+
+    AZ1a:
+        Description: Security Group
+        Type: String
+        Default: ap-south-1a
+    
+    SubnetIds:
+        Description: Subnet Id
+        Type: List<AWS::EC2::Subnet::Id>
+
+    S3BucketARN:
+        Description: S3 Bucket ARN
+        Type: String
+
+Resources:
+
+    myIAMRole:
+        Type: AWS::IAM::Role
+        Properties:
+            Description: Role for EC2 instance to access the site hosted on S3 bucket
+            AssumeRolePolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                - Effect: Allow
+                  Principal: 
+                    Service: 
+                    - ec2.amazonaws.com
+                  Action: "sts:AssumeRole"
+            Path: "/" 
+    RolePolicies:
+        Type: AWS::IAM::Policy 
+        Properties:
+            PolicyName: Proj2S3Policy
+            PolicyDocument:
+                Version: "2012-10-17"
+                Statement:
+                  - Effect: "Allow"
+                    Action: 
+                    - "s3:ListBucket"
+                    - "s3:GetObject"
+                    Resource: !Ref S3BucketARN
+            Roles:
+            - !Ref myIAMRole
+    InstanceProfile:
+        Type: AWS::IAM::InstanceProfile
+        Properties:
+            Path: "/"
+            Roles:
+            - !Ref myIAMRole
+
+    myLaunchConfig:
+        Type: AWS::AutoScaling::LaunchConfiguration
+        Properties:
+            ImageId: ami-010aff33ed5991201
+            SecurityGroups: 
+            - !Ref mySecurityGroup
+            InstanceType: t2.micro
+            KeyName: UbuntuAWSKey
+            BlockDeviceMappings:
+            - DeviceName: '/dev/sdk'
+              Ebs:
+                VolumeSize: '8'
+            UserData:
+                Fn::Base64: !Sub |
+                    #!/bin/bash
+                    sudo yum update -y
+                    sudo yum install httpd -y
+                    sudo service httpd start
+                    sudo cd /var/www/html
+                    sudo aws s3 cp s3://index.html index.html
+                    sudo chown ec2-user index.html
+
+    myAutoScalingGroup:
+        Type: AWS::AutoScaling::AutoScalingGroup
+        Properties:
+            AutoScalingGroupName: myASG
+            MinSize: '2'
+            MaxSize: '2'
+            DesiredCapacity: '2'
+            LaunchConfigurationName: !Ref myLaunchConfig
+            VPCZoneIdentifier: !Ref SubnetIds
